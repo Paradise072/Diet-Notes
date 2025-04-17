@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+	<script src="swiped-events.min.js" ></script>
+    <script src="eng_synonyms.js"></script>
+	
+    <title>Diet Notes</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f4f4f4;
+            margin: 0;
+            position: relative;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+			table-layout: fixed;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #aaa;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #eaeaea;
+        }
+
+        td {
+            
+            word-wrap: break-word;
+        }
+
+        .input-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: #fff;
+            border-top: 1px solid #ddd;
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        .input-container input, .input-container button {
+            margin-right: 10px;
+        }
+        .input-container button {
+            margin-left: 10px;
+        }
+
+        .deleteCell {
+            color: red;
+            cursor: pointer;
+            background-color: #ffcccc;
+        }
+
+        .deleteCell:hover {
+            text-decoration: underline;
+        }
+
+        .deleteParent {
+            width: 100px;
+        }
+
+        tr {
+            font-size: auto;
+            transition: font-size 0.25s ease-in-out;
+        }
+
+        tbody tr {
+            background-color: #f2f2f2;
+        }
+
+        tbody tr:nth-child(odd) {
+            background-color: #d8d8d8;
+        }
+
+        tr.toDelete {
+            font-size: 0px;
+            transition: font-size 0.25s ease-in-out;
+        }
+        @media (max-width: 600px) {
+            .input-container {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .input-container input, .input-container button {
+                margin-right: 0;
+                margin-bottom: 10px;
+                font-size: 16px;
+            }
+            .input-container button {
+                margin-left: 0;
+                height: 40px;
+                
+            }
+
+            .deleteParent {
+                display: none;
+            }
+
+            .deleteCell {
+                display:none;
+            }
+
+            #searchInput {
+                width: 95%;
+                display:block;
+                font-size: 12px;
+                margin: auto;
+            }
+
+        }
+		
+		@media (min-width: 600px) {
+            .input-container {
+                height: 50px;
+                align-items: stretch;
+            }
+			
+			.input-container input {
+				width: 25%;
+			}
+			
+            #searchInput {
+                width: 75%;
+                display:block;
+                font-size: 14px;
+                margin: auto;
+            }
+
+        }
+
+        
+
+    </style>
+</head>
+<body>
+    <h1>Diet Notes</h1>
+    <input type="text" id="searchInput" placeholder="Filter notes by text or keywords" />
+    <div class="input-container">
+        <input type="text" id="keyInput" placeholder="Enter title" />
+        <input type="text" id="valueInput" placeholder="Enter note" />
+        <button onclick="addEntry(document.getElementById('keyInput').value,document.getElementById('valueInput').value)">Add to Table</button>
+    </div>
+    
+    <table id="dictionaryTable">
+        <thead>
+            <tr>
+                <th>title</th>
+                <th>note</th>
+                <th class="deleteParent">delete</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Rows will be added here -->
+        </tbody>
+    </table>
+    
+    <script>
+
+        const tableBody = document.querySelector('#dictionaryTable tbody');
+		
+		let tableDict = {};
+        let filteredTable = {};
+
+        if (localStorage.hasOwnProperty("text")) {
+            tableDict = JSON.parse(localStorage.getItem("text"));
+            for (const key in tableDict) {
+                const value = tableDict[key];
+                addEntry(key,value["text"], value["tags"]);
+            }
+        }
+
+        function allowDelete(node) {
+            if (confirm("WARNING! This will delete the entry. Are you sure?")) {
+                async function deleteFunc() {
+                    let victim = node;
+                    await deleteElement(victim);
+                }
+
+                deleteFunc();
+            }
+        }
+		
+		function sortTable() {
+
+            // Sorts and clears out the table
+            let keys = Object.keys(filteredTable).sort();
+            while (tableBody.firstChild) {
+                tableBody.removeChild(tableBody.firstChild);
+            }
+
+            // Append sorted rows
+            // This has been done without using React or a JS framework, so it's a bit ugly, but it works completely as intended
+
+            for (let key of keys) {
+                const value = filteredTable[key];
+                const newRow = document.createElement('tr');
+                const keyCell = document.createElement('td');
+                const valueCell = document.createElement('td');
+                keyCell.textContent = key;
+                valueCell.textContent = value["text"];
+                newRow.appendChild(keyCell);
+                newRow.appendChild(valueCell);
+                
+                const deleteCell = document.createElement('td');
+                deleteCell.classList.add("deleteCell");
+                deleteCell.textContent="remove note";
+                deleteCell.addEventListener("click", function() { // This is the function that removes the key/value pair from the table
+                    allowDelete(this.parentNode)
+                });
+
+                newRow.appendChild(deleteCell);
+
+                tableBody.appendChild(newRow);
+            }
+        }
+
+        function addEntry(key,value, tags) {
+            const keyInput = key;     
+            const valueInput = value;
+
+            if (keyInput && valueInput) {
+                let valueSynonyms = [];
+
+                if (tags !== undefined) { // Simply copy existing tags if available
+                    valueSynonyms = tags;
+                } else { // Query the synonyms text to get what we need
+                    let words = valueInput.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").split(" ");
+                    words = words.concat(keyInput.split(" "));
+                    for (let word of words) {
+                        word = word.toLowerCase();
+
+                        if (word in synonyms) { // Loop over every word
+                            for (let syn of synonyms[word]) {
+                                syn = syn.toLowerCase();
+                                if (!(word in valueSynonyms)) { // Make sure each tag is unique
+                                    valueSynonyms.push(syn);
+                                }
+                            }
+                        }
+                        valueSynonyms.push(word);
+                    }
+                    console.log(valueSynonyms);
+                }
+                
+
+				tableDict[keyInput] = {"text":valueInput, "tags":valueSynonyms};
+                localStorage.setItem("text", JSON.stringify(tableDict));
+                console.log({"text":valueInput, "tags":valueSynonyms});
+
+                // Clear input fields once entry is added
+                document.getElementById('keyInput').value = '';
+                document.getElementById('valueInput').value = '';
+                filterTable("");
+            } else {
+                alert('Please enter both key and value.');
+            }
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function deleteElement(victim) {
+            victim.classList.add("toDelete");
+            await sleep(240); // This sleep is here to give the animation ample time to run before removing the line. To avoid losing too much time diagnosing the issue, I used this solution and moved on.
+            tableBody.removeChild(victim);
+            delete tableDict[victim.querySelector('td').textContent];
+            localStorage.setItem("text", JSON.stringify(tableDict));
+        }
+
+        function filterTable(queryText) {
+            queryText = queryText.toLowerCase();
+            if (queryText == "") {
+                filteredTable = tableDict;
+            } else {
+                filteredTable = {};
+                for (let [key,value] of Object.entries(tableDict)) { // Iterate over TableDict to get each note
+                    for (let word of queryText.split(" ")) { // Check each word in the query
+                        if (word.length == 0) {
+                            continue;
+                        }
+                        word = word.toLowerCase();
+                        if (value["tags"].includes(word) || key.toLowerCase().includes(word) || value["text"].toLowerCase().includes(word)) { // Check if they match a tag OR are in the original text
+                            filteredTable[key] = value;
+                            continue;
+                        }
+                    }
+                }
+            }
+            sortTable();
+ 
+        }
+
+        document.getElementById('searchInput').addEventListener('input', function() {
+                filterTable(document.getElementById("searchInput").value);
+            }
+        );
+
+        filterTable("");
+		
+		document.addEventListener('swiped', function(e) { // swiped-events.min.js does some heavy lifting on mobile, giving me access to swipe events
+			if (tableBody.contains(e.target)) {
+				//alert("Hi!");
+                if (e.detail.dir == "left") { // Swiping left deletes an element
+                    allowDelete(e.target.parentNode)
+                }
+                if (e.detail.dir == "right") { // Swiping right lists the tags an element has
+                    let tagString = "TAGS: \n\n";
+                    let tags = tableDict[e.target.parentNode.querySelector('td').textContent]["tags"];
+                    for (let i = 0; i < Math.min(tags.length, 50); i++) {
+                        tagString += tags[i];
+                        if (i < tags.length-1) {
+                            tagString += ", ";
+                        } else {
+                            tagString += ".";
+                        }
+                    }
+                    alert(tagString);
+                }
+			}
+		});
+    </script>
+</body>
+</html>
